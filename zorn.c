@@ -9,6 +9,7 @@ struct state {
     bool* canvas;
     int width;
     int height;
+    bool drawing;
 };
 
 struct coord {
@@ -31,7 +32,7 @@ void fill_rect(SDL_Surface* surface,
                 struct coord upper_left,
                 struct coord lower_right,
                 struct color c) {
-    SDL_LockSurface(surface);
+//    SDL_LockSurface(surface);
     SDL_Rect rect = {
         upper_left.x,
         upper_left.y,
@@ -40,7 +41,7 @@ void fill_rect(SDL_Surface* surface,
     };
     Uint32 color = SDL_MapRGB(surface->format, c.r, c.g, c.b);
     SDL_FillRect(surface, &rect, color);
-    SDL_UnlockSurface(surface);
+//    SDL_UnlockSurface(surface);
 }
 
 void render(struct state s, SDL_Window* w) {
@@ -59,9 +60,23 @@ void render(struct state s, SDL_Window* w) {
     SDL_UpdateWindowSurface(w);
 }
 
-struct state handle_click(struct state s, struct coord c) {
-    s.canvas[(c.y/s.zoom) * s.width + (c.x/s.zoom)] = s.color;
-    printf("drawing at (%d, %d)\n", c.x/s.zoom, c.y/s.zoom);
+struct state handle_mousedown(struct state s) {
+    printf("drawing\n");
+    s.drawing = true;
+    return s;
+}
+
+struct state handle_mouseup(struct state s) {
+    printf("not drawing\n");
+    s.drawing = false;
+    return s;
+}
+
+struct state handle_motion(struct state s, struct coord c) {
+    if (s.drawing) {
+        printf("drawing at (%d, %d)\n", c.x/s.zoom, c.y/s.zoom);
+        s.canvas[(c.y/s.zoom) * s.width + (c.x/s.zoom)] = s.color;
+    }
     return s;
 }
 
@@ -131,7 +146,11 @@ int main(int argc, char* args[]) {
         } else if (event.type == SDL_KEYDOWN) {
             s = handle_keypress(s, event.key.keysym.sym, event.key.keysym.mod);
         } else if (event.type == SDL_MOUSEBUTTONDOWN) {
-            handle_click(s, (struct coord) {event.button.x, event.button.y});
+            s = handle_mousedown(s);
+        } else if (event.type == SDL_MOUSEBUTTONUP) {
+            s = handle_mouseup(s);
+        } else if (event.type == SDL_MOUSEMOTION) {
+            s = handle_motion(s, (struct coord) {event.motion.x, event.motion.y});
         }
 
         render(s, window);

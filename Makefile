@@ -1,4 +1,4 @@
-CFLAGS=-std=c99 -Wall
+CFLAGS=-O2 -std=c99 -Wall
 
 zorn: zorn.c
 	$(CC) $(CFLAGS) $^ -lSDL2 -o $@
