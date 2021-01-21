@@ -1,6 +1,8 @@
+#define _POSIX_C_SOURCE 2
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 struct state {
     int zoom;
@@ -55,15 +57,28 @@ void draw_background(struct state s, SDL_Surface* surface) {
     fill_rect(surface, origin, size, COLOR_GREY);
 }
 
-void draw_canvas(struct state s, SDL_Surface* surface) {
-    struct coord canvas_start = {
-        -s.scroll_x * s.zoom,
-        -s.scroll_y * s.zoom
-    };
+struct coord get_canvas_start(struct state s, struct coord win_size) {
     struct coord canvas_size = {
         s.width * s.zoom,
         s.height * s.zoom
     };
+    struct coord canvas_start;
+    if (canvas_size.x > win_size.x) {
+        canvas_start.x = -s.scroll_x * s.zoom;
+        canvas_start.y = -s.scroll_y * s.zoom;
+    } else {
+        canvas_start.x = (win_size.x - canvas_size.x) / 2;
+        canvas_start.y = (win_size.y - canvas_size.y) / 2;
+    }
+    return canvas_start;
+}
+
+void draw_canvas(struct state s, SDL_Surface* surface, struct coord win_size) {
+    struct coord canvas_size = {
+        s.width * s.zoom,
+        s.height * s.zoom
+    };
+    struct coord canvas_start = get_canvas_start(s, win_size);
     fill_rect(surface, canvas_start, canvas_size, COLOR_WHITE);
     struct coord pixel_size = {
         s.zoom,
@@ -99,12 +114,14 @@ struct state handle_mouseup(struct state s) {
     return s;
 }
 
-struct state handle_motion(struct state s, struct coord c) {
+struct state handle_motion(struct state s,
+        struct coord c, struct coord win_size) {
     if (s.drawing) {
+        struct coord canvas_start = get_canvas_start(s, win_size);
+        c.x -= canvas_start.x;
+        c.y -= canvas_start.y;
         c.x /= s.zoom;
         c.y /= s.zoom;
-        c.x += s.scroll_x;
-        c.y += s.scroll_y;
         if (c.x >= 0 && c.y >= 0 && c.x < s.width && c.y < s.height) {
             s.canvas[c.y * s.width + c.x] = s.color;
         }
@@ -157,7 +174,25 @@ struct state handle_keypress(struct state s, int key, int mod) {
     return s;
 }
 
-int main(int argc, char* args[]) {
+struct state parse_argv(struct state s, int argc, char* argv[]) {
+    int opt;
+    while ((opt = getopt(argc, argv, "w:h:")) != -1) {
+        switch (opt) {
+        case 'h':
+            s.height = atoi(optarg);
+            break;
+        case 'w':
+            s.width = atoi(optarg);
+            break;
+        default:
+            fprintf(stderr, "Usage: %s [-w width] [-h height] name\n", argv[0]);
+            exit(EXIT_FAILURE);
+        }
+    }
+    return s;
+}
+
+int main(int argc, char* argv[]) {
     struct state s = {
         .zoom = 12,
         .canvas = canvas,
@@ -167,6 +202,7 @@ int main(int argc, char* args[]) {
         .scroll_x = 0,
         .scroll_y = 0
     };
+    s = parse_argv(s, argc, argv);
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "Error: %s\n", SDL_GetError());
         return 1;
@@ -182,6 +218,8 @@ int main(int argc, char* args[]) {
         return 1;
     }
     while (true) {
+        struct coord win_size;
+        SDL_GetWindowSize(window, &win_size.x, &win_size.y);
         SDL_Event event;
         SDL_WaitEvent(&event);
         switch (event.type) {
@@ -194,24 +232,22 @@ int main(int argc, char* args[]) {
         case SDL_MOUSEBUTTONDOWN:
             s = handle_mousedown(s);
             s = handle_motion(s, (struct coord) {event.button.x,
-                                                 event.button.y});
+                                                 event.button.y}, win_size);
             break;
         case SDL_MOUSEBUTTONUP:
             s = handle_mouseup(s);
             break;
         case SDL_MOUSEMOTION:
             s = handle_motion(s, (struct coord) {event.motion.x,
-                                                 event.motion.y});
+                                                 event.motion.y}, win_size);
             break;
         }
         if (s.quit) {
             break;
         }
         SDL_Surface* surface = SDL_GetWindowSurface(window);
-        struct coord win_size;
-        SDL_GetWindowSize(window, &win_size.x, &win_size.y);
         draw_background(s, surface);
-        draw_canvas(s, surface);
+        draw_canvas(s, surface, win_size);
         draw_ui(s, surface, win_size);
         SDL_UpdateWindowSurface(window);
     }
