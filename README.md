@@ -1,3 +1,3 @@
-![logo](https://i.imgur.com/5tDPIgH.png)
+![logo](https://i.imgur.com/LwJvJfx.png)
 
 A minimalistic bitmap editor.
