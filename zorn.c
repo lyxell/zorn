@@ -30,9 +30,9 @@ struct color {
 bool canvas[65536];
 
 const char* WINDOW_NAME         = "zorn";
-const int INITIAL_CANVAS_HEIGHT = 100;
-const int INITIAL_CANVAS_WIDTH  = 100;
-const int INITIAL_ZOOM          = 12;
+const int INITIAL_CANVAS_HEIGHT = 64;
+const int INITIAL_CANVAS_WIDTH  = 64;
+const int INITIAL_ZOOM          = 16;
 const int SCREEN_HEIGHT         = 480;
 const int SCREEN_WIDTH          = 640;
 const int SCROLL_STEP           = 1;
@@ -170,6 +170,43 @@ struct state handle_keypress(struct state s, int key, int mod) {
     return s;
 }
 
+struct state load_file(struct state s, char* filename) {
+    FILE *f = fopen(filename, "r");
+    if (f == NULL) {
+        fprintf(stderr, "Unable to open %s\n", filename);
+        exit(EXIT_FAILURE);
+    }
+    char res[128];
+    fscanf(f, "%s", res);
+    if (strcmp(res, "P4") == 0) {
+        // read width
+        fscanf(f, "%s", res);
+        s.width = atoi(res);
+        // read height
+        fscanf(f, "%s", res);
+        s.height = atoi(res);
+        // skip space
+        fgetc(f);
+        // read data
+        int unread = s.width * s.height;
+        bool* canvasp = s.canvas;
+        while (unread > 0) {
+            char curr = fgetc(f);
+            for (int i = 0; i < 8; i++) {
+                canvasp[7-i] = curr & 1;
+                curr >>= 1;
+            }
+            canvasp += 8;
+            unread -= 8;
+        }
+    } else {
+        fprintf(stderr, "%s is not a PBM file\n", filename);
+        exit(EXIT_FAILURE);
+    }
+    printf(res);
+    return s;
+}
+
 struct state parse_argv(struct state s, int argc, char* argv[]) {
     int opt;
     while ((opt = getopt(argc, argv, "w:h:")) != -1) {
@@ -184,6 +221,9 @@ struct state parse_argv(struct state s, int argc, char* argv[]) {
             fprintf(stderr, "Usage: %s [-w width] [-h height] name\n", argv[0]);
             exit(EXIT_FAILURE);
         }
+    }
+    if (optind < argc) {
+        s = load_file(s, argv[optind]);
     }
     return s;
 }
