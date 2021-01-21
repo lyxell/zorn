@@ -29,11 +29,15 @@ struct color {
 
 bool canvas[65536];
 
-const int SCREEN_HEIGHT = 480;
-const int SCREEN_WIDTH  = 640;
-const int SCROLL_STEP   = 5;
-const int UI_HEIGHT     = 30;
-const int UI_PADDING    = 10;
+const char* WINDOW_NAME         = "zorn";
+const int INITIAL_CANVAS_HEIGHT = 100;
+const int INITIAL_CANVAS_WIDTH  = 100;
+const int INITIAL_ZOOM          = 12;
+const int SCREEN_HEIGHT         = 480;
+const int SCREEN_WIDTH          = 640;
+const int SCROLL_STEP           = 1;
+const int UI_HEIGHT             = 30;
+const int UI_PADDING            = 10;
 const struct color COLOR_BLACK  = {0, 0, 0};
 const struct color COLOR_GREY   = {180, 180, 180};
 const struct color COLOR_WHITE  = {255, 255, 255};
@@ -51,26 +55,26 @@ void fill_rect(SDL_Surface* surface,
     SDL_FillRect(surface, &rect, SDL_MapRGB(surface->format, c.r, c.g, c.b));
 }
 
-void draw_background(struct state s, SDL_Surface* surface) {
-    struct coord origin = {0, 0};
-    struct coord size = {surface->w, surface->h};
-    fill_rect(surface, origin, size, COLOR_GREY);
-}
-
 struct coord get_canvas_start(struct state s, struct coord win_size) {
     struct coord canvas_size = {
         s.width * s.zoom,
         s.height * s.zoom
     };
-    struct coord canvas_start;
-    if (canvas_size.x > win_size.x) {
-        canvas_start.x = -s.scroll_x * s.zoom;
-        canvas_start.y = -s.scroll_y * s.zoom;
-    } else {
-        canvas_start.x = (win_size.x - canvas_size.x) / 2;
-        canvas_start.y = (win_size.y - canvas_size.y) / 2;
+    struct coord canvas_start = {
+        (win_size.x - canvas_size.x) / 2,
+        (win_size.y - canvas_size.y) / 2
+    };
+    if (canvas_size.x > win_size.x || canvas_size.y > win_size.y) {
+        canvas_start.x -= s.scroll_x * s.zoom;
+        canvas_start.y -= s.scroll_y * s.zoom;
     }
     return canvas_start;
+}
+
+void draw_background(struct state s, SDL_Surface* surface) {
+    struct coord origin = {0, 0};
+    struct coord size = {surface->w, surface->h};
+    fill_rect(surface, origin, size, COLOR_GREY);
 }
 
 void draw_canvas(struct state s, SDL_Surface* surface, struct coord win_size) {
@@ -133,40 +137,32 @@ struct state handle_keypress(struct state s, int key, int mod) {
     if (mod == KMOD_LSHIFT || mod == KMOD_RSHIFT) {
         switch (key) {
         case SDLK_EQUALS:
-            s.zoom++;
-            printf("zoom %d%%\n", s.zoom * 100);
+            s.zoom <<= 1;
             break;
         }
     } else {
         switch (key) {
         case SDLK_MINUS:
             if (s.zoom > 1) {
-                s.zoom--;
+                s.zoom >>= 1;
             }
-            printf("zoom %d%%\n", s.zoom * 100);
             break;
         case SDLK_k:
             s.scroll_y -= SCROLL_STEP;
-            printf("scroll up\n");
             break;
         case SDLK_j:
             s.scroll_y += SCROLL_STEP;
-            printf("scroll down\n");
             break;
         case SDLK_h:
             s.scroll_x -= SCROLL_STEP;
-            printf("scroll left\n");
             break;
         case SDLK_l:
             s.scroll_x += SCROLL_STEP;
-            printf("scroll right\n");
             break;
         case SDLK_x:
             s.color = !s.color;
-            printf("changing color to %s\n", s.color ? "black" : "white");
             break;
         case SDLK_q:
-            printf("exiting...\n");
             s.quit = true;
             break;
         }
@@ -194,52 +190,49 @@ struct state parse_argv(struct state s, int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
     struct state s = {
-        .zoom = 12,
-        .canvas = canvas,
-        .width = 50,
-        .height = 10,
-        .color = true,
-        .scroll_x = 0,
-        .scroll_y = 0
+        .zoom       = INITIAL_ZOOM,
+        .canvas     = canvas,
+        .width      = INITIAL_CANVAS_WIDTH,
+        .height     = INITIAL_CANVAS_HEIGHT,
+        .color      = true,
+        .scroll_x   = 0,
+        .scroll_y   = 0
     };
     s = parse_argv(s, argc, argv);
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "Error: %s\n", SDL_GetError());
-        return 1;
+        exit(EXIT_FAILURE);
     } 
-    SDL_Window* window = SDL_CreateWindow("Bitmap editor",
-                           SDL_WINDOWPOS_UNDEFINED,
-                           SDL_WINDOWPOS_UNDEFINED,
-                           SCREEN_WIDTH,
-                           SCREEN_HEIGHT,
+    SDL_Window* window = SDL_CreateWindow(WINDOW_NAME, SDL_WINDOWPOS_UNDEFINED,
+                           SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT,
                            SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (window == NULL) {
         fprintf(stderr, "Error: %s\n", SDL_GetError());
-        return 1;
+        exit(EXIT_FAILURE);
     }
     while (true) {
         struct coord win_size;
         SDL_GetWindowSize(window, &win_size.x, &win_size.y);
-        SDL_Event event;
-        SDL_WaitEvent(&event);
-        switch (event.type) {
+        SDL_Event e;
+        SDL_WaitEvent(&e);
+        switch (e.type) {
         case SDL_QUIT:
             s.quit = true;
             break;
         case SDL_KEYDOWN:
-            s = handle_keypress(s, event.key.keysym.sym, event.key.keysym.mod);
+            s = handle_keypress(s, e.key.keysym.sym, e.key.keysym.mod);
             break;
         case SDL_MOUSEBUTTONDOWN:
             s = handle_mousedown(s);
-            s = handle_motion(s, (struct coord) {event.button.x,
-                                                 event.button.y}, win_size);
+            s = handle_motion(s, (struct coord) {e.button.x,
+                                                 e.button.y}, win_size);
             break;
         case SDL_MOUSEBUTTONUP:
             s = handle_mouseup(s);
             break;
         case SDL_MOUSEMOTION:
-            s = handle_motion(s, (struct coord) {event.motion.x,
-                                                 event.motion.y}, win_size);
+            s = handle_motion(s, (struct coord) {e.motion.x,
+                                                 e.motion.y}, win_size);
             break;
         }
         if (s.quit) {
