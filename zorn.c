@@ -2,9 +2,6 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-#define MIN(a,b) (((a)<(b))?(a):(b))
-#define MAX(a,b) (((a)>(b))?(a):(b))
-
 struct state {
     int zoom;
     bool color;
@@ -187,21 +184,25 @@ int main(int argc, char* args[]) {
     while (true) {
         SDL_Event event;
         SDL_WaitEvent(&event);
-        if (event.type == SDL_QUIT) {
+        switch (event.type) {
+        case SDL_QUIT:
             s.quit = true;
-        } else if (event.type == SDL_KEYDOWN) {
+            break;
+        case SDL_KEYDOWN:
             s = handle_keypress(s, event.key.keysym.sym, event.key.keysym.mod);
-        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+            break;
+        case SDL_MOUSEBUTTONDOWN:
             s = handle_mousedown(s);
-            struct coord pos = {event.button.x,
-                                event.button.y};
-            s = handle_motion(s, pos);
-        } else if (event.type == SDL_MOUSEBUTTONUP) {
+            s = handle_motion(s, (struct coord) {event.button.x,
+                                                 event.button.y});
+            break;
+        case SDL_MOUSEBUTTONUP:
             s = handle_mouseup(s);
-        } else if (event.type == SDL_MOUSEMOTION) {
-            struct coord pos = {event.button.x,
-                                event.button.y};
-            s = handle_motion(s, pos);
+            break;
+        case SDL_MOUSEMOTION:
+            s = handle_motion(s, (struct coord) {event.motion.x,
+                                                 event.motion.y});
+            break;
         }
         if (s.quit) {
             break;
