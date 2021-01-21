@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
 struct state {
     int zoom;
     bool color;
@@ -25,10 +28,11 @@ struct color {
     int b;
 };
 
-bool canvas[10000];
+bool canvas[50000];
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
+const int SCROLL_STEP = 5;
 
 void fill_rect(SDL_Surface* surface,
                 struct coord upper_left,
@@ -48,14 +52,14 @@ void render(struct state s, SDL_Window* w) {
     SDL_Surface* surface = SDL_GetWindowSurface(w);
     SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 180, 180, 180));
     fill_rect(surface,
-            (struct coord) {0, 0},
+            (struct coord) {MAX(0, -s.scroll_x*s.zoom), MAX(0, -s.scroll_y*s.zoom)},
             (struct coord) {(s.width-s.scroll_x)*s.zoom, (s.height-s.scroll_y)*s.zoom},
             (struct color) {255, 255, 255});
     for (int row = s.scroll_y; row < s.height; row++) {
         int y_draw_pos = row - s.scroll_y;
         for (int col = s.scroll_x; col < s.width; col++) {
             int x_draw_pos = col - s.scroll_x;
-            if (s.canvas[row * s.width + col]) {
+            if (row >= 0 && col >= 0 && s.canvas[row * s.width + col]) {
                 fill_rect(surface,
                         (struct coord) {x_draw_pos*s.zoom,
                                         y_draw_pos*s.zoom},
@@ -86,7 +90,7 @@ struct state handle_motion(struct state s, struct coord c) {
         c.y += s.scroll_y * s.zoom;
         c.x /= s.zoom;
         c.y /= s.zoom;
-        if (c.x < s.width && c.y < s.height) {
+        if (c.x >= 0 && c.x < s.width && c.y >= 0 && c.y < s.height) {
             s.canvas[c.y * s.width + c.x] = s.color;
         }
     }
@@ -110,23 +114,19 @@ struct state handle_keypress(struct state s, int key, int mod) {
             printf("zoom %d%%\n", s.zoom * 100);
             break;
         case SDLK_k:
-            if (s.scroll_y > 0) {
-                s.scroll_y--;
-                printf("scroll up\n");
-            }
+            s.scroll_y -= SCROLL_STEP;
+            printf("scroll up\n");
             break;
         case SDLK_j:
-            s.scroll_y++;
+            s.scroll_y += SCROLL_STEP;
             printf("scroll down\n");
             break;
         case SDLK_h:
-            if (s.scroll_x > 0) {
-                s.scroll_x--;
-                printf("scroll left\n");
-            }
+            s.scroll_x -= SCROLL_STEP;
+            printf("scroll left\n");
             break;
         case SDLK_l:
-            s.scroll_x++;
+            s.scroll_x += SCROLL_STEP;
             printf("scroll right\n");
             break;
         case SDLK_x:
@@ -147,8 +147,8 @@ int main(int argc, char* args[]) {
     struct state s = {
         .zoom = 12,
         .canvas = canvas,
-        .width = 20,
-        .height = 20,
+        .width = 50,
+        .height = 10,
         .color = true,
         .scroll_x = 0,
         .scroll_y = 0
