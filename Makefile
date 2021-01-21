@@ -1,8 +1,9 @@
 CFLAGS=-O2 -std=c99 -Wall
 DESTDIR=/usr/local/bin
+LDLIBS=-lSDL2
 
 zorn: zorn.c
-	$(CC) $(CFLAGS) $^ -lSDL2 -o $@
+	$(CC) $(CFLAGS) $^ $(LDLIBS) -o $@
 
 install:
 	cp zorn $(DESTDIR)
