@@ -28,69 +28,87 @@ struct color {
     int b;
 };
 
-bool canvas[50000];
+bool canvas[65536];
 
-const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
-const int SCROLL_STEP = 5;
+const int SCREEN_WIDTH  = 640;
+const int SCROLL_STEP   = 5;
+const int UI_HEIGHT     = 30;
+const int UI_PADDING    = 10;
+const struct color COLOR_BLACK  = {0, 0, 0};
+const struct color COLOR_GREY   = {180, 180, 180};
+const struct color COLOR_WHITE  = {255, 255, 255};
 
 void fill_rect(SDL_Surface* surface,
-                struct coord upper_left,
-                struct coord lower_right,
+                struct coord start,
+                struct coord size,
                 struct color c) {
     SDL_Rect rect = {
-        upper_left.x,
-        upper_left.y,
-        lower_right.x - upper_left.x,
-        lower_right.y - upper_left.y
+        start.x,
+        start.y,
+        size.x,
+        size.y
     };
-    Uint32 color = SDL_MapRGB(surface->format, c.r, c.g, c.b);
-    SDL_FillRect(surface, &rect, color);
+    SDL_FillRect(surface, &rect, SDL_MapRGB(surface->format, c.r, c.g, c.b));
 }
 
-void render(struct state s, SDL_Window* w) {
-    SDL_Surface* surface = SDL_GetWindowSurface(w);
-    SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 180, 180, 180));
-    fill_rect(surface,
-            (struct coord) {MAX(0, -s.scroll_x*s.zoom), MAX(0, -s.scroll_y*s.zoom)},
-            (struct coord) {(s.width-s.scroll_x)*s.zoom, (s.height-s.scroll_y)*s.zoom},
-            (struct color) {255, 255, 255});
-    for (int row = s.scroll_y; row < s.height; row++) {
-        int y_draw_pos = row - s.scroll_y;
-        for (int col = s.scroll_x; col < s.width; col++) {
-            int x_draw_pos = col - s.scroll_x;
-            if (row >= 0 && col >= 0 && s.canvas[row * s.width + col]) {
-                fill_rect(surface,
-                        (struct coord) {x_draw_pos*s.zoom,
-                                        y_draw_pos*s.zoom},
-                        (struct coord) {(x_draw_pos+1)*s.zoom,
-                                        (y_draw_pos+1)*s.zoom},
-                        (struct color) {0, 0, 0});
+void draw_background(struct state s, SDL_Surface* surface) {
+    struct coord origin = {0, 0};
+    struct coord size = {surface->w, surface->h};
+    fill_rect(surface, origin, size, COLOR_GREY);
+}
+
+void draw_canvas(struct state s, SDL_Surface* surface) {
+    struct coord canvas_start = {
+        -s.scroll_x * s.zoom,
+        -s.scroll_y * s.zoom
+    };
+    struct coord canvas_size = {
+        s.width * s.zoom,
+        s.height * s.zoom
+    };
+    fill_rect(surface, canvas_start, canvas_size, COLOR_WHITE);
+    struct coord pixel_size = {
+        s.zoom,
+        s.zoom
+    };
+    for (int row = 0; row < s.height; row++) {
+        for (int col = 0; col < s.width; col++) {
+            if (s.canvas[row * s.width + col]) {
+                struct coord pixel_start = {
+                    canvas_start.x + col * s.zoom,
+                    canvas_start.y + row * s.zoom
+                };
+                fill_rect(surface, pixel_start, pixel_size, COLOR_BLACK);
             }
         }
     }
-    SDL_UpdateWindowSurface(w);
+}
+
+void draw_ui(struct state s, SDL_Surface* surface, struct coord win_size) {
+    struct coord ui_start = {UI_PADDING, win_size.y - UI_HEIGHT - UI_PADDING};
+    struct coord color_block = {UI_HEIGHT, UI_HEIGHT};
+    fill_rect(surface, ui_start, color_block,
+                s.color ? COLOR_BLACK : COLOR_WHITE);
 }
 
 struct state handle_mousedown(struct state s) {
-    printf("drawing\n");
     s.drawing = true;
     return s;
 }
 
 struct state handle_mouseup(struct state s) {
-    printf("not drawing\n");
     s.drawing = false;
     return s;
 }
 
 struct state handle_motion(struct state s, struct coord c) {
     if (s.drawing) {
-        c.x += s.scroll_x * s.zoom;
-        c.y += s.scroll_y * s.zoom;
         c.x /= s.zoom;
         c.y /= s.zoom;
-        if (c.x >= 0 && c.x < s.width && c.y >= 0 && c.y < s.height) {
+        c.x += s.scroll_x;
+        c.y += s.scroll_y;
+        if (c.x >= 0 && c.y >= 0 && c.x < s.width && c.y < s.height) {
             s.canvas[c.y * s.width + c.x] = s.color;
         }
     }
@@ -143,7 +161,6 @@ struct state handle_keypress(struct state s, int key, int mod) {
 }
 
 int main(int argc, char* args[]) {
-
     struct state s = {
         .zoom = 12,
         .canvas = canvas,
@@ -153,28 +170,22 @@ int main(int argc, char* args[]) {
         .scroll_x = 0,
         .scroll_y = 0
     };
-
-    SDL_Event event;
-
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "Error: %s\n", SDL_GetError());
         return 1;
     } 
-
     SDL_Window* window = SDL_CreateWindow("Bitmap editor",
                            SDL_WINDOWPOS_UNDEFINED,
                            SDL_WINDOWPOS_UNDEFINED,
                            SCREEN_WIDTH,
                            SCREEN_HEIGHT,
                            SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
-
     if (window == NULL) {
         fprintf(stderr, "Error: %s\n", SDL_GetError());
         return 1;
     }
-
     while (true) {
-
+        SDL_Event event;
         SDL_WaitEvent(&event);
         if (event.type == SDL_QUIT) {
             s.quit = true;
@@ -182,22 +193,29 @@ int main(int argc, char* args[]) {
             s = handle_keypress(s, event.key.keysym.sym, event.key.keysym.mod);
         } else if (event.type == SDL_MOUSEBUTTONDOWN) {
             s = handle_mousedown(s);
+            struct coord pos = {event.button.x,
+                                event.button.y};
+            s = handle_motion(s, pos);
         } else if (event.type == SDL_MOUSEBUTTONUP) {
             s = handle_mouseup(s);
         } else if (event.type == SDL_MOUSEMOTION) {
-            s = handle_motion(s, (struct coord) {event.motion.x, event.motion.y});
+            struct coord pos = {event.button.x,
+                                event.button.y};
+            s = handle_motion(s, pos);
         }
-
-        render(s, window);
-
         if (s.quit) {
             break;
         }
+        SDL_Surface* surface = SDL_GetWindowSurface(window);
+        struct coord win_size;
+        SDL_GetWindowSize(window, &win_size.x, &win_size.y);
+        draw_background(s, surface);
+        draw_canvas(s, surface);
+        draw_ui(s, surface, win_size);
+        SDL_UpdateWindowSurface(window);
     }
-
     SDL_DestroyWindow(window);
     SDL_Quit();
-
     return 0;
 }
 
