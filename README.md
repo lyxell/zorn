@@ -21,6 +21,11 @@ Depends on `SDL2`.
 * https://git.sr.ht/~lyxell/zorn
 * https://github.com/lyxell/zorn
 
+## Similar projects
+
+* https://github.com/cloudhead/rx
+* http://mtpaint.sourceforge.net/
+
 ## License
 
 MIT
