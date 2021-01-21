@@ -8,6 +8,14 @@ See `Makefile`.
 
 Depends on `SDL2`.
 
+## Bindings
+
+* `h/j/k/l` - pan window left/down/up/right (when zoomed in)
+* `+/-` - zoom in/out
+* `x` - change paint color
+* `w` - save
+* `q` - quit
+
 ## Mirrors
 
 * https://git.sr.ht/~lyxell/zorn
