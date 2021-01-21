@@ -176,18 +176,14 @@ struct state load_file(struct state s, char* filename) {
         fprintf(stderr, "Unable to open %s\n", filename);
         exit(EXIT_FAILURE);
     }
-    char res[128];
-    fscanf(f, "%s", res);
+    char res[64];
+    fscanf(f, "%63s", res);
     if (strcmp(res, "P4") == 0) {
-        // read width
-        fscanf(f, "%s", res);
+        fscanf(f, "%63s", res);
         s.width = atoi(res);
-        // read height
-        fscanf(f, "%s", res);
+        fscanf(f, "%63s", res);
         s.height = atoi(res);
-        // skip space
         fgetc(f);
-        // read data
         int unread = s.width * s.height;
         bool* canvasp = s.canvas;
         while (unread > 0) {
