@@ -7,11 +7,13 @@
 struct state {
     int zoom;
     bool color;
-    bool quit;
+    bool exiting;
     bool* canvas;
+    char* filename;
     int width;
     int height;
     bool drawing;
+    bool saving;
     int scroll_x;
     int scroll_y;
 };
@@ -27,8 +29,6 @@ struct color {
     int b;
 };
 
-bool canvas[65536];
-
 const char* WINDOW_NAME         = "zorn";
 const int INITIAL_CANVAS_HEIGHT = 64;
 const int INITIAL_CANVAS_WIDTH  = 64;
@@ -41,6 +41,8 @@ const int UI_PADDING            = 10;
 const struct color COLOR_BLACK  = {0, 0, 0};
 const struct color COLOR_GREY   = {180, 180, 180};
 const struct color COLOR_WHITE  = {255, 255, 255};
+
+bool canvas[65536];
 
 void fill_rect(SDL_Surface* surface,
                 struct coord start,
@@ -55,11 +57,15 @@ void fill_rect(SDL_Surface* surface,
     SDL_FillRect(surface, &rect, SDL_MapRGB(surface->format, c.r, c.g, c.b));
 }
 
-struct coord get_canvas_start(struct state s, struct coord win_size) {
-    struct coord canvas_size = {
+struct coord get_canvas_size(struct state s) {
+    return (struct coord) {
         s.width * s.zoom,
         s.height * s.zoom
     };
+}
+
+struct coord get_canvas_start(struct state s, struct coord win_size) {
+    struct coord canvas_size = get_canvas_size(s);
     struct coord canvas_start = {
         (win_size.x - canvas_size.x) / 2,
         (win_size.y - canvas_size.y) / 2
@@ -78,10 +84,7 @@ void draw_background(struct state s, SDL_Surface* surface) {
 }
 
 void draw_canvas(struct state s, SDL_Surface* surface, struct coord win_size) {
-    struct coord canvas_size = {
-        s.width * s.zoom,
-        s.height * s.zoom
-    };
+    struct coord canvas_size = get_canvas_size(s);
     struct coord canvas_start = get_canvas_start(s, win_size);
     fill_rect(surface, canvas_start, canvas_size, COLOR_WHITE);
     struct coord pixel_size = {
@@ -147,6 +150,9 @@ struct state handle_keypress(struct state s, int key, int mod) {
                 s.zoom >>= 1;
             }
             break;
+        case SDLK_w:
+            s.saving = true;
+            break;
         case SDLK_k:
             s.scroll_y -= SCROLL_STEP;
             break;
@@ -163,18 +169,37 @@ struct state handle_keypress(struct state s, int key, int mod) {
             s.color = !s.color;
             break;
         case SDLK_q:
-            s.quit = true;
+            s.exiting = true;
             break;
         }
     }
     return s;
 }
 
-struct state load_file(struct state s, char* filename) {
-    FILE *f = fopen(filename, "r");
+void save_pbm(struct state s) {
+    FILE *f = fopen(s.filename, "w");
     if (f == NULL) {
-        fprintf(stderr, "Unable to open %s\n", filename);
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "Unable to open %s\n", s.filename);
+        return;
+    }
+    fprintf(f, "P4\n%d %d\n", s.width, s.height);
+    int resolution = s.width * s.height;
+    int num_bytes = (resolution + 7) / 8;
+    for (int i = 0; i < num_bytes; i++) {
+        char byte = 0;
+        for (int j = 0; j < 8; j++) {
+            byte |= s.canvas[(i*8)+j] << (7 - j);
+        }
+        fputc(byte, f);
+    }
+    fclose(f);
+}
+
+struct state load_pbm(struct state s) {
+    FILE *f = fopen(s.filename, "r");
+    if (f == NULL) {
+        fprintf(stderr, "Unable to open %s\n", s.filename);
+        return s;
     }
     char res[64];
     fscanf(f, "%63s", res);
@@ -183,23 +208,24 @@ struct state load_file(struct state s, char* filename) {
         s.width = atoi(res);
         fscanf(f, "%63s", res);
         s.height = atoi(res);
+        int resolution = s.width * s.height;
+        if (resolution > sizeof(canvas)/sizeof(canvas[0])) {
+            fprintf(stderr, "Image resolution too high for %s\n", s.filename);
+            exit(EXIT_FAILURE);
+        }
         fgetc(f);
-        int unread = s.width * s.height;
-        bool* canvasp = s.canvas;
-        while (unread > 0) {
-            char curr = fgetc(f);
-            for (int i = 0; i < 8; i++) {
-                canvasp[7-i] = curr & 1;
-                curr >>= 1;
+        int num_bytes = (resolution + 7) / 8;
+        for (int i = 0; i < num_bytes; i++) {
+            char byte = fgetc(f);
+            for (int j = 0; j < 8; j++) {
+                s.canvas[(i*8)+(7-j)] = (byte >> j) & 1;
             }
-            canvasp += 8;
-            unread -= 8;
         }
     } else {
-        fprintf(stderr, "%s is not a PBM file\n", filename);
+        fprintf(stderr, "%s is not a PBM file\n", s.filename);
         exit(EXIT_FAILURE);
     }
-    printf(res);
+    fclose(f);
     return s;
 }
 
@@ -219,7 +245,7 @@ struct state parse_argv(struct state s, int argc, char* argv[]) {
         }
     }
     if (optind < argc) {
-        s = load_file(s, argv[optind]);
+        s.filename = argv[optind];
     }
     return s;
 }
@@ -230,11 +256,20 @@ int main(int argc, char* argv[]) {
         .canvas     = canvas,
         .width      = INITIAL_CANVAS_WIDTH,
         .height     = INITIAL_CANVAS_HEIGHT,
+        .saving     = false,
+        .drawing    = false,
+        .filename   = "untitled.pbm",
         .color      = true,
         .scroll_x   = 0,
         .scroll_y   = 0
     };
+
     s = parse_argv(s, argc, argv);
+    
+    if (s.filename) {
+        s = load_pbm(s);
+    }
+
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "Error: %s\n", SDL_GetError());
         exit(EXIT_FAILURE);
@@ -253,7 +288,7 @@ int main(int argc, char* argv[]) {
         SDL_WaitEvent(&e);
         switch (e.type) {
         case SDL_QUIT:
-            s.quit = true;
+            s.exiting = true;
             break;
         case SDL_KEYDOWN:
             s = handle_keypress(s, e.key.keysym.sym, e.key.keysym.mod);
@@ -271,7 +306,11 @@ int main(int argc, char* argv[]) {
                                                  e.motion.y}, win_size);
             break;
         }
-        if (s.quit) {
+        if (s.saving) {
+            save_pbm(s);
+            s.saving = false;
+        }
+        if (s.exiting) {
             break;
         }
         SDL_Surface* surface = SDL_GetWindowSurface(window);
