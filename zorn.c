@@ -10,6 +10,8 @@ struct state {
     int width;
     int height;
     bool drawing;
+    int scroll_x;
+    int scroll_y;
 };
 
 struct coord {
@@ -32,7 +34,6 @@ void fill_rect(SDL_Surface* surface,
                 struct coord upper_left,
                 struct coord lower_right,
                 struct color c) {
-//    SDL_LockSurface(surface);
     SDL_Rect rect = {
         upper_left.x,
         upper_left.y,
@@ -41,19 +42,26 @@ void fill_rect(SDL_Surface* surface,
     };
     Uint32 color = SDL_MapRGB(surface->format, c.r, c.g, c.b);
     SDL_FillRect(surface, &rect, color);
-//    SDL_UnlockSurface(surface);
 }
 
 void render(struct state s, SDL_Window* w) {
     SDL_Surface* surface = SDL_GetWindowSurface(w);
-    SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 255, 255, 255));
-    for (int row = 0; row < s.height; row++) {
-        for (int col = 0; col < s.width; col++) {
+    SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 180, 180, 180));
+    fill_rect(surface,
+            (struct coord) {0, 0},
+            (struct coord) {(s.width-s.scroll_x)*s.zoom, (s.height-s.scroll_y)*s.zoom},
+            (struct color) {255, 255, 255});
+    for (int row = s.scroll_y; row < s.height; row++) {
+        int y_draw_pos = row - s.scroll_y;
+        for (int col = s.scroll_x; col < s.width; col++) {
+            int x_draw_pos = col - s.scroll_x;
             if (s.canvas[row * s.width + col]) {
-                struct coord upper_left = {col*s.zoom, row*s.zoom};
-                struct coord lower_right = {(col+1)*s.zoom,(row+1)*s.zoom};
-                struct color color = {0, 0, 0};
-                fill_rect(surface, upper_left, lower_right, color);
+                fill_rect(surface,
+                        (struct coord) {x_draw_pos*s.zoom,
+                                        y_draw_pos*s.zoom},
+                        (struct coord) {(x_draw_pos+1)*s.zoom,
+                                        (y_draw_pos+1)*s.zoom},
+                        (struct color) {0, 0, 0});
             }
         }
     }
@@ -74,8 +82,13 @@ struct state handle_mouseup(struct state s) {
 
 struct state handle_motion(struct state s, struct coord c) {
     if (s.drawing) {
-        printf("drawing at (%d, %d)\n", c.x/s.zoom, c.y/s.zoom);
-        s.canvas[(c.y/s.zoom) * s.width + (c.x/s.zoom)] = s.color;
+        c.x += s.scroll_x * s.zoom;
+        c.y += s.scroll_y * s.zoom;
+        c.x /= s.zoom;
+        c.y /= s.zoom;
+        if (c.x < s.width && c.y < s.height) {
+            s.canvas[c.y * s.width + c.x] = s.color;
+        }
     }
     return s;
 }
@@ -96,6 +109,26 @@ struct state handle_keypress(struct state s, int key, int mod) {
             }
             printf("zoom %d%%\n", s.zoom * 100);
             break;
+        case SDLK_k:
+            if (s.scroll_y > 0) {
+                s.scroll_y--;
+                printf("scroll up\n");
+            }
+            break;
+        case SDLK_j:
+            s.scroll_y++;
+            printf("scroll down\n");
+            break;
+        case SDLK_h:
+            if (s.scroll_x > 0) {
+                s.scroll_x--;
+                printf("scroll left\n");
+            }
+            break;
+        case SDLK_l:
+            s.scroll_x++;
+            printf("scroll right\n");
+            break;
         case SDLK_x:
             s.color = !s.color;
             printf("changing color to %s\n", s.color ? "black" : "white");
@@ -114,9 +147,11 @@ int main(int argc, char* args[]) {
     struct state s = {
         .zoom = 12,
         .canvas = canvas,
-        .width = 100,
-        .height = 100,
-        .color = true
+        .width = 20,
+        .height = 20,
+        .color = true,
+        .scroll_x = 0,
+        .scroll_y = 0
     };
 
     SDL_Event event;
